@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Signal Desk — Social Media Trend Analyzer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --ink:#12151b;
+    --panel:#1a1e26;
+    --panel-2:#20242e;
+    --line:#2c313c;
+    --text:#e9ebf1;
+    --muted:#8a8f9c;
+    --amber:#ffb84d;
+    --amber-dim:#7a5a2b;
+    --green:#6ee7b7;
+    --red:#f4867a;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--ink);
+    color:var(--text);
+    font-family:'IBM Plex Sans', sans-serif;
+    -webkit-font-smoothing:antialiased;
+    line-height:1.5;
+  }
+  .mono{font-family:'IBM Plex Mono', monospace;}
+  .display{font-family:'Space Grotesk', sans-serif;}
+
+  /* background scanline texture */
+  body::before{
+    content:"";
+    position:fixed; inset:0;
+    background-image:repeating-linear-gradient(180deg, rgba(255,255,255,0.015) 0px, rgba(255,255,255,0.015) 1px, transparent 1px, transparent 3px);
+    pointer-events:none;
+    z-index:0;
+  }
+
+  .wrap{max-width:1080px; margin:0 auto; padding:0 24px;}
+
+  /* ---------- HERO ---------- */
+  header.hero{
+    position:relative;
+    padding:64px 0 48px;
+    border-bottom:1px solid var(--line);
+    overflow:hidden;
+  }
+  .eyebrow{
+    display:inline-flex; align-items:center; gap:8px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12px; letter-spacing:0.12em; text-transform:uppercase;
+    color:var(--amber);
+    margin-bottom:20px;
+  }
+  .eyebrow .dot{
+    width:7px; height:7px; border-radius:50%;
+    background:var(--amber);
+    box-shadow:0 0 0 0 rgba(255,184,77,0.6);
+    animation:pulse 2s infinite;
+  }
+  @keyframes pulse{
+    0%{box-shadow:0 0 0 0 rgba(255,184,77,0.5);}
+    70%{box-shadow:0 0 0 8px rgba(255,184,77,0);}
+    100%{box-shadow:0 0 0 0 rgba(255,184,77,0);}
+  }
+  h1.display{
+    font-size:clamp(34px, 5.5vw, 58px);
+    line-height:1.05;
+    font-weight:600;
+    margin:0 0 18px;
+    letter-spacing:-0.01em;
+    max-width:820px;
+  }
+  h1.display em{
+    font-style:normal;
+    color:var(--amber);
+  }
+  .hero p.sub{
+    color:var(--muted);
+    font-size:17px;
+    max-width:560px;
+    margin:0 0 32px;
+  }
+  .waveform{
+    position:absolute; right:-40px; top:40px;
+    width:420px; height:200px;
+    opacity:0.55;
+    pointer-events:none;
+  }
+  @media (max-width:900px){ .waveform{display:none;} }
+
+  /* ---------- SECTION SHELL ---------- */
+  section{padding:56px 0; border-bottom:1px solid var(--line); position:relative; z-index:1;}
+  .section-label{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12px; letter-spacing:0.1em; text-transform:uppercase;
+    color:var(--muted);
+    margin:0 0 8px;
+  }
+  h2.display{
+    font-size:26px; font-weight:600; margin:0 0 28px;
+    letter-spacing:-0.01em;
+  }
+
+  /* ---------- INTAKE PANEL ---------- */
+  .intake{
+    display:grid; grid-template-columns:1.1fr 1fr; gap:24px;
+  }
+  @media (max-width:800px){ .intake{grid-template-columns:1fr;} }
+
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:24px;
+  }
+  .panel h3{
+    margin:0 0 6px; font-size:15px; font-weight:600;
+  }
+  .panel .hint{color:var(--muted); font-size:13px; margin:0 0 18px;}
+
+  .dropzone{
+    border:1.5px dashed var(--line);
+    border-radius:8px;
+    padding:28px 18px;
+    text-align:center;
+    cursor:pointer;
+    transition:border-color .15s, background .15s;
+  }
+  .dropzone:hover, .dropzone.drag{
+    border-color:var(--amber);
+    background:rgba(255,184,77,0.04);
+  }
+  .dropzone input{display:none;}
+  .dropzone .icon{font-size:22px; margin-bottom:8px; color:var(--amber);}
+  .dropzone .label{font-size:14px; color:var(--text);}
+  .dropzone .sub{font-size:12px; color:var(--muted); margin-top:4px;}
+
+  textarea{
+    width:100%; min-height:160px;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    border-radius:8px;
+    color:var(--text);
+    font-family:'IBM Plex Mono', monospace;
+    font-size:13px;
+    padding:14px;
+    resize:vertical;
+  }
+  textarea:focus{outline:2px solid var(--amber); outline-offset:1px;}
+
+  .btn{
+    appearance:none; border:none; cursor:pointer;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:13px; letter-spacing:0.03em;
+    padding:12px 20px; border-radius:7px;
+    background:var(--amber); color:#1a1204;
+    font-weight:600;
+    transition:transform .1s, filter .15s;
+  }
+  .btn:hover{filter:brightness(1.08);}
+  .btn:active{transform:scale(0.98);}
+  .btn:focus-visible{outline:2px solid var(--text); outline-offset:2px;}
+  .btn.ghost{
+    background:transparent; color:var(--text);
+    border:1px solid var(--line);
+  }
+  .row{display:flex; gap:12px; align-items:center; margin-top:16px; flex-wrap:wrap;}
+  .status{font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--muted);}
+
+  /* ---------- DASHBOARD ---------- */
+  #dashboard{display:none;}
+  .stat-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:32px;
+  }
+  @media (max-width:800px){ .stat-grid{grid-template-columns:repeat(2,1fr);} }
+  .stat{
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+    padding:18px;
+  }
+  .stat .num{font-family:'Space Grotesk',sans-serif; font-size:30px; font-weight:700;}
+  .stat .num.amber{color:var(--amber);}
+  .stat .num.green{color:var(--green);}
+  .stat .num.red{color:var(--red);}
+  .stat .lbl{font-size:12px; color:var(--muted); margin-top:4px; letter-spacing:0.02em;}
+
+  .chart-grid{
+    display:grid; grid-template-columns:1.3fr 1fr; gap:24px; margin-bottom:32px;
+  }
+  @media (max-width:800px){ .chart-grid{grid-template-columns:1fr;} }
+  .chart-panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+    padding:20px;
+  }
+  .chart-panel h4{margin:0 0 16px; font-size:13px; color:var(--muted); font-weight:600; letter-spacing:0.05em; text-transform:uppercase;}
+  .chart-panel canvas{max-height:260px;}
+
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  thead th{
+    text-align:left; font-family:'IBM Plex Mono', monospace;
+    font-size:11px; text-transform:uppercase; letter-spacing:0.06em;
+    color:var(--muted); padding:10px 12px; border-bottom:1px solid var(--line);
+  }
+  tbody td{padding:10px 12px; border-bottom:1px solid var(--line); vertical-align:top;}
+  tbody tr:last-child td{border-bottom:none;}
+  .tag{
+    display:inline-block; font-family:'IBM Plex Mono', monospace; font-size:11px;
+    padding:3px 9px; border-radius:20px; font-weight:600; letter-spacing:0.02em;
+  }
+  .tag.pos{background:rgba(110,231,183,0.12); color:var(--green);}
+  .tag.neg{background:rgba(244,134,122,0.12); color:var(--red);}
+  .tag.neu{background:rgba(138,143,156,0.14); color:var(--muted);}
+  .tweet-cell{max-width:420px; color:var(--text);}
+
+  footer{padding:32px 0 64px; text-align:center;}
+  footer p{color:var(--muted); font-size:13px; font-family:'IBM Plex Mono', monospace;}
+
+  .sr-only{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0);}
+
+  @media (prefers-reduced-motion: reduce){
+    .eyebrow .dot{animation:none;}
+    .btn{transition:none;}
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow"><span class="dot"></span> live intake · client-side only</div>
+    <h1 class="display">Read the <em>signal</em> before it becomes a headline.</h1>
+    <p class="sub">Drop in a CSV of posts or paste them directly. Signal Desk cleans the text, scores sentiment, and surfaces the keywords rising fastest — entirely in your browser.</p>
+  </div>
+  <svg class="waveform" viewBox="0 0 420 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <polyline points="0,100 20,100 30,60 40,140 50,30 60,170 70,90 90,90 100,50 110,150 120,20 130,180 140,100 160,100 170,70 180,130 190,40 200,160 210,100 230,100 240,80 250,120 260,55 270,145 280,100 300,100 310,65 320,135 330,45 340,155 350,100 370,100 380,90 390,110 400,75 410,125 420,100"
+      fill="none" stroke="#ffb84d" stroke-width="1.5" opacity="0.9"/>
+  </svg>
+</header>
+
+<main>
+  <section id="intake-section">
+    <div class="wrap">
+      <p class="section-label">01 · intake</p>
+      <h2 class="display">Feed the desk</h2>
+      <div class="intake">
+        <div class="panel">
+          <h3>Upload a CSV</h3>
+          <p class="hint">Needs a text column (e.g. <span class="mono">text</span>, <span class="mono">tweet</span>, or <span class="mono">content</span>). Any other columns are ignored.</p>
+          <label class="dropzone" id="dropzone" for="fileInput">
+            <div class="icon">&#8593;</div>
+            <div class="label">Click to choose a file, or drag it here</div>
+            <div class="sub">.csv up to ~5MB</div>
+            <input type="file" id="fileInput" accept=".csv" />
+          </label>
+          <div class="status" id="fileStatus"></div>
+        </div>
+        <div class="panel">
+          <h3>Or paste posts</h3>
+          <p class="hint">One post per line. Good for a quick test run without a file.</p>
+          <textarea id="pasteArea" placeholder="just tried the new update and it's actually really smooth
+not loving the new pricing change tbh
+everyone talking about #heatwave today, wild
+support finally replied after 3 days, thanks I guess"></textarea>
+          <div class="row">
+            <button class="btn" id="analyzeBtn">Run analysis</button>
+            <button class="btn ghost" id="sampleBtn" type="button">Load sample data</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="dashboard">
+    <div class="wrap">
+      <p class="section-label">02 · readout</p>
+      <h2 class="display">What the feed is saying</h2>
+
+      <div class="stat-grid">
+        <div class="stat"><div class="num amber" id="statTotal">0</div><div class="lbl">Posts analyzed</div></div>
+        <div class="stat"><div class="num green" id="statPos">0%</div><div class="lbl">Positive tone</div></div>
+        <div class="stat"><div class="num red" id="statNeg">0%</div><div class="lbl">Negative tone</div></div>
+        <div class="stat"><div class="num" id="statTop">—</div><div class="lbl">Top trending term</div></div>
+      </div>
+
+      <div class="chart-grid">
+        <div class="chart-panel">
+          <h4>Trending keywords</h4>
+          <canvas id="keywordChart" role="img" aria-label="Bar chart of most frequent keywords"></canvas>
+        </div>
+        <div class="chart-panel">
+          <h4>Sentiment split</h4>
+          <canvas id="sentimentChart" role="img" aria-label="Donut chart of sentiment breakdown"></canvas>
+        </div>
+      </div>
+
+      <div class="chart-panel">
+        <h4>Sample classifications</h4>
+        <table>
+          <thead>
+            <tr><th>Post</th><th>Sentiment</th><th>Signal words</th></tr>
+          </thead>
+          <tbody id="sampleTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>Signal Desk — runs fully client-side, no data leaves your browser.</p>
+  </div>
+</footer>
+
+<script>
+(function(){
+  const STOPWORDS = new Set(("a about above after again against all am an and any are aren't as at be because been before "+
+    "being below between both but by can't cannot could couldn't did didn't do does doesn't doing don't down during each "+
+    "few for from further had hadn't has hasn't have haven't having he he'd he'll he's her here here's hers herself him "+
+    "himself his how how's i i'd i'll i'm i've if in into is isn't it it's its itself let's me more most mustn't my myself "+
+    "no nor not of off on once only or other ought our ours ourselves out over own same shan't she she'd she'll she's "+
+    "should shouldn't so some such than that that's the their theirs them themselves then there there's these they they'd "+
+    "they'll they're they've this those through to too under until up very was wasn't we we'd we'll we're we've were "+
+    "weren't what what's when when's where where's which while who who's whom why why's with won't would wouldn't you "+
+    "you'd you'll you're you've your yours yourself yourselves rt via just really like get got one im").split(' '));
+
+  const POSITIVE = new Set(("good great love loved loving awesome amazing excellent happy best fantastic nice cool "+
+    "beautiful perfect thanks thank grateful excited win winning wow brilliant impressive smooth solid fun helpful "+
+    "glad enjoy enjoyed enjoying favorite favourite fresh better improved improve").split(' '));
+
+  const NEGATIVE = new Set(("bad hate hated hating worst terrible awful sad angry annoyed annoying broken bug bugs "+
+    "issue issues problem problems fail failed failing disappointed disappointing sucks sucked slow crash crashed "+
+    "worse worried worry concern concerns down glitch glitchy scam frustrated frustrating unacceptable").split(' '));
+
+  const TEXT_KEYS = ['text','tweet','content','post','message','body'];
+
+  let sampleLoaded = false;
+  const SAMPLE = [
+    "just tried the new update and it's actually really smooth, love it",
+    "not loving the new pricing change tbh, feels like a scam honestly",
+    "everyone talking about #heatwave today, wild how fast it trended",
+    "support finally replied after 3 days, thanks I guess",
+    "this app keeps crashing on launch, so frustrating",
+    "the new #playlist feature is amazing, best update in months",
+    "why is the checkout page so broken right now, cannot buy anything",
+    "#mondaymotivation honestly needed this today, feeling great",
+    "another outage? this is getting annoying, fix your servers",
+    "loved the livestream tonight, the energy was fantastic",
+    "#budget2026 discourse is everywhere, mixed reactions so far",
+    "customer service was awful, waited an hour for nothing",
+    "excited for the #launch tomorrow, cannot wait to see it",
+    "the redesign looks clean but navigation feels worse honestly",
+    "#trending right now: everyone posting their year in review",
+    "great concert last night, absolutely worth the ticket price",
+    "app update broke my saved settings, not happy about this",
+    "#worldcup buzz is real, timeline is nothing but highlights",
+    "appreciate the quick fix, support team did a solid job",
+    "prices going up again, this is getting unacceptable"
+  ];
+
+  function clean(str){
+    return String(str).toLowerCase()
+      .replace(/https?:\/\/\S+/g,' ')
+      .replace(/[^a-z0-9#\s]/g,' ')
+      .split(/\s+/)
+      .filter(Boolean);
+  }
+
+  function analyzePosts(posts){
+    const freq = {};
+    const hashFreq = {};
+    let pos=0, neg=0, neu=0;
+    const rows = [];
+
+    posts.forEach(raw => {
+      const tokens = clean(raw);
+      let score = 0;
+      const signals = [];
+      tokens.forEach(tok => {
+        if(tok.startsWith('#') && tok.length>1){
+          hashFreq[tok] = (hashFreq[tok]||0)+1;
+        }
+        const word = tok.replace(/^#/,'');
+        if(word.length<2 || STOPWORDS.has(word)) return;
+        freq[word] = (freq[word]||0)+1;
+        if(POSITIVE.has(word)){ score++; signals.push(word); }
+        if(NEGATIVE.has(word)){ score--; signals.push(word); }
+      });
+      let label = 'Neutral';
+      if(score>0){ label='Positive'; pos++; }
+      else if(score<0){ label='Negative'; neg++; }
+      else { neu++; }
+      rows.push({text: raw, label, signals});
+    });
+
+    const topWords = Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,8);
+    const topHash = Object.entries(hashFreq).sort((a,b)=>b[1]-a[1]);
+    const combined = (topHash.length ? topHash : topWords).slice(0,8);
+
+    return {
+      total: posts.length,
+      pos, neg, neu,
+      topTerms: combined.length ? combined : topWords,
+      rows
+    };
+  }
+
+  let keywordChart, sentimentChart;
+
+  function render(result){
+    document.getElementById('dashboard').style.display = 'block';
+    document.getElementById('statTotal').textContent = result.total;
+    document.getElementById('statPos').textContent = result.total ? Math.round(result.pos/result.total*100)+'%' : '0%';
+    document.getElementById('statNeg').textContent = result.total ? Math.round(result.neg/result.total*100)+'%' : '0%';
+    document.getElementById('statTop').textContent = result.topTerms[0] ? result.topTerms[0][0] : '—';
+
+    const kwCtx = document.getElementById('keywordChart').getContext('2d');
+    if(keywordChart) keywordChart.destroy();
+    keywordChart = new Chart(kwCtx, {
+      type: 'bar',
+      data: {
+        labels: result.topTerms.map(t=>t[0]),
+        datasets: [{
+          data: result.topTerms.map(t=>t[1]),
+          backgroundColor: '#ffb84d',
+          borderRadius: 4,
+          maxBarThickness: 28
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        plugins: { legend: { display:false } },
+        scales: {
+          x: { ticks:{ color:'#8a8f9c' }, grid:{ color:'#2c313c' } },
+          y: { ticks:{ color:'#e9ebf1', font:{family:"IBM Plex Mono"} }, grid:{ display:false } }
+        }
+      }
+    });
+
+    const sentCtx = document.getElementById('sentimentChart').getContext('2d');
+    if(sentimentChart) sentimentChart.destroy();
+    sentimentChart = new Chart(sentCtx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Positive','Negative','Neutral'],
+        datasets: [{
+          data: [result.pos, result.neg, result.neu],
+          backgroundColor: ['#6ee7b7','#f4867a','#3a3f4b'],
+          borderColor: '#1a1e26',
+          borderWidth: 2
+        }]
+      },
+      options: {
+        plugins: { legend: { position:'bottom', labels:{ color:'#e9ebf1', font:{family:"IBM Plex Sans"} } } },
+        cutout: '62%'
+      }
+    });
+
+    const tbody = document.getElementById('sampleTable');
+    tbody.innerHTML = '';
+    result.rows.slice(0,12).forEach(r=>{
+      const tr = document.createElement('tr');
+      const tagClass = r.label==='Positive' ? 'pos' : (r.label==='Negative' ? 'neg' : 'neu');
+      tr.innerHTML = `<td class="tweet-cell">${escapeHtml(r.text)}</td>
+        <td><span class="tag ${tagClass}">${r.label}</span></td>
+        <td class="mono" style="color:var(--muted)">${r.signals.slice(0,4).join(', ') || '—'}</td>`;
+      tbody.appendChild(tr);
+    });
+
+    document.getElementById('dashboard').scrollIntoView({behavior:'smooth', block:'start'});
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function findTextColumn(row){
+    const keys = Object.keys(row);
+    for(const k of TEXT_KEYS){
+      const match = keys.find(x => x.toLowerCase() === k);
+      if(match) return match;
+    }
+    return keys[0];
+  }
+
+  function runFromPosts(posts){
+    posts = posts.map(p=>String(p||'').trim()).filter(Boolean);
+    if(!posts.length){
+      document.getElementById('fileStatus').textContent = 'No posts found — add some text first.';
+      return;
+    }
+    render(analyzePosts(posts));
+  }
+
+  document.getElementById('analyzeBtn').addEventListener('click', () => {
+    const text = document.getElementById('pasteArea').value;
+    const posts = text.split('\n').map(l=>l.trim()).filter(Boolean);
+    if(!posts.length){
+      document.getElementById('fileStatus').textContent = 'Paste some posts or upload a CSV first.';
+      return;
+    }
+    runFromPosts(posts);
+  });
+
+  document.getElementById('sampleBtn').addEventListener('click', () => {
+    document.getElementById('pasteArea').value = SAMPLE.join('\n');
+    runFromPosts(SAMPLE);
+  });
+
+  const fileInput = document.getElementById('fileInput');
+  const dropzone = document.getElementById('dropzone');
+  const fileStatus = document.getElementById('fileStatus');
+
+  function handleFile(file){
+    if(!file) return;
+    fileStatus.textContent = 'Reading ' + file.name + '…';
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: function(results){
+        const rows = results.data;
+        if(!rows.length){
+          fileStatus.textContent = 'File looks empty.';
+          return;
+        }
+        const col = findTextColumn(rows[0]);
+        const posts = rows.map(r => r[col]).filter(Boolean);
+        fileStatus.textContent = `Loaded ${posts.length} posts from column "${col}".`;
+        runFromPosts(posts);
+      },
+      error: function(err){
+        fileStatus.textContent = 'Could not parse that file: ' + err.message;
+      }
+    });
+  }
+
+  fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropzone.classList.remove('drag');
+    handleFile(e.dataTransfer.files[0]);
+  });
+})();
+</script>
+</body>
+</html>
